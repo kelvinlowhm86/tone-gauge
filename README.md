@@ -43,6 +43,8 @@ a colour-coded border on your textarea, a Slack-bot decoration, a
 dashboard sparkline. The library emits the data; you render it.
 
 ---
+Test drive: <a href='https://kelvinlowhm86.github.io/tone-gauge/'>Here</a>
+---
 
 ## Installation
 
