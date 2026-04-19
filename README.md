@@ -396,3 +396,7 @@ academic and commercial research use with attribution
 (<https://sraf.nd.edu/loughranmcdonald-master-dictionary/>); commercial
 licensing enquiries should be directed to the authors per their terms.
 AFINN-165-FinancialMarketNews is MIT (Titus Wormer).
+
+## Disclaimer
+
+Built by Claude Opus 4.7, under human supervision and direction
