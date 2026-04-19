@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SentimentPlugin — Integration Example</title>
+
+<!--
+  ============================================================================
+  INTEGRATION EXAMPLE
+
+  This file is NOT self-contained. It loads sentiment-plugin.js as a sibling
+  file via a regular <script src="..."> tag (see the bottom of <body>).
+
+  Serve this from a directory where sentiment-plugin.js sits alongside it.
+  Any static file server will do — even `python3 -m http.server` in the
+  folder. Opening the file directly with file:// works too.
+
+  The library does NO rendering. The code below shows how a host page takes
+  the result JSON and renders whatever UI it wants. Here we do four things
+  with the same data stream:
+
+    1. A thin sentiment slider (reads result.score)
+    2. A highlighted copy of the text with positive/negative words coloured
+       (reads result.matches and result.text)
+    3. A compact stats row (reads result.wordsScored, result.label, etc.)
+    4. A live JSON viewer (renders the whole object)
+
+  All four consumers share ONE analyzer instance. Add or remove any of them
+  independently.
+  ============================================================================
+-->
+
+<style>
+  :root{
+    --bg:#0f1115; --panel:#171a21; --panel-2:#1f232d;
+    --text:#e8ecf1; --muted:#8a93a4; --border:#272c38;
+    --pos-bg:rgba(16,185,129,.15);  --pos-fg:#6ee7b7;
+    --neg-bg:rgba(239,68,68,.15);   --neg-fg:#fca5a5;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    min-height:100vh;}
+  .wrap{max-width:820px;margin:0 auto;padding:26px 18px 60px;}
+
+  h1{font-size:22px;font-weight:600;margin:0 0 4px;letter-spacing:-.01em;}
+  .sub{color:var(--muted);font-size:13px;margin-bottom:20px;line-height:1.5;}
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;
+    padding:18px;margin-bottom:14px;}
+  label{display:block;font-size:11px;color:var(--muted);margin-bottom:8px;
+    text-transform:uppercase;letter-spacing:.08em;}
+
+  textarea{width:100%;min-height:120px;padding:12px 14px;background:var(--panel-2);
+    color:var(--text);border:1px solid var(--border);border-radius:10px;font-size:15px;
+    font-family:inherit;line-height:1.5;resize:vertical;outline:none;
+    transition:border-color .15s ease;}
+  textarea:focus{border-color:#6ee7b7;}
+
+  /* ── Slider consumer ─────────────────────────────────────────── */
+  .slider-block{padding:22px 18px 18px;}
+  .slider{position:relative;height:22px;margin:0 9px;}
+  .slider-track{position:absolute;top:50%;left:0;right:0;height:4px;
+    transform:translateY(-50%);border-radius:999px;
+    background:linear-gradient(to right,#ef4444 0%,#f97316 25%,#f59e0b 50%,#84cc16 75%,#10b981 100%);
+    opacity:.9;}
+  .slider-thumb{position:absolute;top:50%;left:50%;width:18px;height:18px;
+    border-radius:50%;transform:translate(-50%,-50%);background:#f59e0b;
+    border:2px solid #fff;box-shadow:0 2px 10px rgba(0,0,0,.4),0 0 0 3px rgba(255,255,255,.05);
+    transition:left .45s cubic-bezier(.2,.8,.2,1),background .3s ease;}
+  .slider-ticks{display:flex;justify-content:space-between;margin-top:8px;
+    font-size:10px;color:var(--muted);font-variant-numeric:tabular-nums;padding:0 2px;}
+
+  /* ── Highlighted-text consumer ───────────────────────────────── */
+  .highlighted{background:var(--panel-2);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;font-size:15px;line-height:1.7;
+    white-space:pre-wrap;word-wrap:break-word;min-height:48px;
+    color:var(--muted);}
+  .highlighted .pos{background:var(--pos-bg);color:var(--pos-fg);
+    padding:1px 5px;border-radius:4px;}
+  .highlighted .neg{background:var(--neg-bg);color:var(--neg-fg);
+    padding:1px 5px;border-radius:4px;}
+  .highlighted .tok{color:var(--text);}
+
+  /* ── Stats consumer ──────────────────────────────────────────── */
+  .stats-row{display:flex;gap:10px;flex-wrap:wrap;}
+  .stat{background:var(--panel-2);border:1px solid var(--border);
+    border-radius:10px;padding:8px 12px;font-size:12px;display:flex;gap:8px;
+    align-items:baseline;}
+  .stat .k{color:var(--muted);text-transform:uppercase;letter-spacing:.08em;font-size:10px;}
+  .stat .v{font-weight:600;font-variant-numeric:tabular-nums;}
+
+  /* ── JSON viewer consumer ────────────────────────────────────── */
+  .json-view{background:var(--panel-2);border:1px solid var(--border);
+    border-radius:10px;padding:12px 14px;font-family:"SF Mono",Monaco,Consolas,monospace;
+    font-size:11px;line-height:1.5;color:#d3dae8;overflow-x:auto;max-height:320px;
+    overflow-y:auto;}
+  .json-view .k{color:#c792ea;}
+  .json-view .s{color:#a5d6a7;}
+  .json-view .n{color:#f2ce94;}
+  .json-view .b{color:#89ddff;}
+
+  footer{color:var(--muted);font-size:11px;text-align:center;margin-top:18px;line-height:1.6;}
+  code{background:var(--panel-2);padding:1px 5px;border-radius:4px;font-size:11px;
+    border:1px solid var(--border);}
+  .err{background:#3a1a1a;border:1px solid #6b2525;color:#fca5a5;padding:12px 14px;
+    border-radius:10px;font-size:13px;margin:14px 0;}
+  .err code{background:#2a0f0f;border-color:#6b2525;}
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>SentimentPlugin — integration example</h1>
+    <div class="sub">
+      This page loads <code>sentiment-plugin.js</code> as a sibling file and wires it up
+      to four independent consumers — a slider, an inline text highlighter,
+      a stats row, and a live JSON viewer — all driven by the same
+      <code>onScoreChange</code> callback.
+    </div>
+
+    <!-- Banner shown only if the script failed to load (file served incorrectly, etc.) -->
+    <div id="loadError" class="err" style="display:none;">
+      <strong>sentiment-plugin.js didn't load.</strong><br/>
+      This example expects <code>sentiment-plugin.js</code> in the same folder.
+      Serve both files from a local web server, for example:
+      <code>python3 -m http.server</code> &nbsp;in the folder containing them.
+    </div>
+
+    <!-- The input itself -->
+    <div class="panel">
+      <label>Your text</label>
+      <textarea id="notes" placeholder="Type or paste text here..."></textarea>
+    </div>
+
+    <!-- Consumer 1: slider -->
+    <div class="panel slider-block">
+      <label>Consumer #1 — thin slider (reads result.score)</label>
+      <div class="slider">
+        <div class="slider-track"></div>
+        <div class="slider-thumb" id="thumb"></div>
+      </div>
+      <div class="slider-ticks">
+        <span>−1.0</span><span>−0.5</span><span>0</span><span>+0.5</span><span>+1.0</span>
+      </div>
+    </div>
+
+    <!-- Consumer 2: highlighted text -->
+    <div class="panel">
+      <label>Consumer #2 — inline highlighter (reads result.matches + charStart/charEnd)</label>
+      <div class="highlighted" id="highlighted"></div>
+    </div>
+
+    <!-- Consumer 3: stats row -->
+    <div class="panel">
+      <label>Consumer #3 — stats row (reads result.label, wordsScored, raw, average)</label>
+      <div class="stats-row">
+        <div class="stat"><span class="k">label</span>    <span class="v" id="stLabel">—</span></div>
+        <div class="stat"><span class="k">score</span>    <span class="v" id="stScore">0.00</span></div>
+        <div class="stat"><span class="k">scored</span>   <span class="v" id="stScored">0/0</span></div>
+        <div class="stat"><span class="k">raw sum</span>  <span class="v" id="stRaw">0</span></div>
+        <div class="stat"><span class="k">avg</span>      <span class="v" id="stAvg">0.00</span></div>
+        <div class="stat"><span class="k">trigger</span>  <span class="v" id="stTrigger">—</span></div>
+      </div>
+    </div>
+
+    <!-- Consumer 4: live JSON viewer -->
+    <div class="panel">
+      <label>Consumer #4 — full result JSON (everything the library returns)</label>
+      <div class="json-view" id="jsonView">null</div>
+    </div>
+
+    <footer>
+      View the source of this file to see the wiring. Open DevTools →
+      Console to see <code>[SentimentPlugin] v3.0.0 ready</code> logged by the
+      library on init. Call <code>window.analyzer.getScore()</code> manually to
+      inspect the last result.
+    </footer>
+  </div>
+
+  <!-- ─── The library, loaded from a sibling file ───────────────────────── -->
+  <script src="sentiment-plugin.js"></script>
+
+  <!-- ─── Your integration code lives down here ─────────────────────────── -->
+  <script>
+  (function () {
+    'use strict';
+
+    // Guard: if the script tag above failed (e.g. opened via file:// with a
+    // browser blocking sibling fetches, or the file is missing), tell the
+    // user clearly instead of silently doing nothing.
+    if (typeof window.SentimentPlugin === 'undefined') {
+      document.getElementById('loadError').style.display = 'block';
+      return;
+    }
+
+    // ───── DOM refs ──────────────────────────────────────────────────────
+    var notes       = document.getElementById('notes');
+    var thumb       = document.getElementById('thumb');
+    var highlighted = document.getElementById('highlighted');
+    var stLabel     = document.getElementById('stLabel');
+    var stScore     = document.getElementById('stScore');
+    var stScored    = document.getElementById('stScored');
+    var stRaw       = document.getElementById('stRaw');
+    var stAvg       = document.getElementById('stAvg');
+    var stTrigger   = document.getElementById('stTrigger');
+    var jsonView    = document.getElementById('jsonView');
+
+    // ───── Consumer helpers ──────────────────────────────────────────────
+
+    // Red → orange → yellow → lime → green interpolation across score [-1, +1]
+    function scoreColor(s) {
+      var r, g, b;
+      if (s < 0) {
+        var t = Math.max(0, s + 1);
+        r = Math.round(239 + (245 - 239) * t);
+        g = Math.round( 68 + (158 -  68) * t);
+        b = Math.round( 68 + ( 11 -  68) * t);
+      } else {
+        var t2 = Math.min(1, s);
+        r = Math.round(245 + ( 16 - 245) * t2);
+        g = Math.round(158 + (185 - 158) * t2);
+        b = Math.round( 11 + (129 -  11) * t2);
+      }
+      return 'rgb(' + r + ',' + g + ',' + b + ')';
+    }
+
+    function escapeHTML(str) {
+      return (str || '')
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    // Build a highlighted HTML copy of the text using the matches' char ranges.
+    // Matches include the exact char offsets, so we can rebuild the string.
+    function buildHighlightedHTML(result) {
+      if (!result.text) return '';
+      var out = '';
+      var cursor = 0;
+      // matches are in token order, which is also character order
+      for (var i = 0; i < result.matches.length; i++) {
+        var m = result.matches[i];
+        // text between previous end and this match
+        out += '<span class="tok">' +
+               escapeHTML(result.text.slice(cursor, m.charStart)) +
+               '</span>';
+        var cls = m.effectiveScore > 0 ? 'pos' : 'neg';
+        var title = 'lemma=' + m.lemma +
+                    ' base=' + m.baseScore +
+                    (m.negated ? ' NEGATED' : '') +
+                    (m.intensifierMult !== 1 ? ' ×' + m.intensifierMult : '') +
+                    ' effective=' + m.effectiveScore +
+                    ' [' + m.lookup + ']';
+        out += '<span class="' + cls + '" title="' + escapeHTML(title) + '">' +
+               escapeHTML(result.text.slice(m.charStart, m.charEnd)) +
+               '</span>';
+        cursor = m.charEnd;
+      }
+      out += '<span class="tok">' + escapeHTML(result.text.slice(cursor)) + '</span>';
+      return out;
+    }
+
+    // Minimal syntax-highlighting JSON pretty-printer (no dep on any lib)
+    function prettyJSON(obj) {
+      var s = JSON.stringify(obj, null, 2);
+      if (!s) return 'null';
+      return s
+        .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+        .replace(/"([^"]+)":/g, '<span class="k">"$1"</span>:')
+        .replace(/: "([^"]*)"/g,  ': <span class="s">"$1"</span>')
+        .replace(/: (true|false|null)/g, ': <span class="b">$1</span>')
+        .replace(/: (-?\d+(?:\.\d+)?)/g, ': <span class="n">$1</span>');
+    }
+
+    // ───── The single onScoreChange handler that feeds all consumers ─────
+    function render(result) {
+      // 1. Slider
+      thumb.style.left = (((result.score + 1) / 2) * 100) + '%';
+      thumb.style.background = scoreColor(result.score);
+
+      // 2. Highlighted text
+      highlighted.innerHTML = buildHighlightedHTML(result) ||
+        '<span style="color:var(--muted);font-style:italic;">(nothing yet)</span>';
+
+      // 3. Stats row
+      stLabel.textContent   = result.label;
+      stLabel.style.color   = scoreColor(result.score);
+      stScore.textContent   = (result.score >= 0 ? '+' : '') + result.score.toFixed(2);
+      stScore.style.color   = scoreColor(result.score);
+      stScored.textContent  = result.wordsScored + ' / ' + result.wordsTotal;
+      stRaw.textContent     = result.raw.toFixed(1);
+      stAvg.textContent     = result.average.toFixed(2);
+      stTrigger.textContent = (result.meta && result.meta.trigger) || '—';
+
+      // 4. JSON viewer
+      jsonView.innerHTML = prettyJSON(result);
+    }
+
+    // ───── Library init — one line to wire everything up ─────────────────
+    var analyzer = SentimentPlugin.init(notes, { onScoreChange: render });
+
+    // Expose for manual inspection in the DevTools console
+    window.analyzer = analyzer;
+
+    // Seed the textarea with an example so first-time viewers see
+    // something immediately.
+    notes.value = 'Earnings surged 30%, outperforming estimates, but guidance was cut and shares dipped on hawkish Fed signals.';
+    analyzer.refresh();
+  })();
+  </script>
+</body>
+</html>
