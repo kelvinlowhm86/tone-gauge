@@ -9,11 +9,12 @@ the model toward conclusions that match the charge, regardless of the
 underlying evidence. The research section below covers this in detail.
 
 **tone-gauge** is a lightweight writing aid that scores the polarity of
-whatever you're drafting — a prompt, a brief, an analyst note, a
-performance review — and displays it live as a score in `[−1, +1]`. You
+whatever prompt you're drafting and displays it live as a score in `[−1, +1]`. You
 decide whether that number is what you intended. Neutral language scores
 near zero; loaded language doesn't. What your UI does with the score is up
 to you; the library just emits the data.
+
+Designed for use alongside LLM chat interfaces, especially ones for Finance and investment workflows where unbiased reasoning is critical.
 
 The core lexicon is finance-tuned (Loughran-McDonald 2025 +
 AFINN-FinancialMarketNews + a curated market supplement, 6,711 entries),
